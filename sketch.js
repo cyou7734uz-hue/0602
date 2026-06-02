@@ -4,13 +4,24 @@ let explosions = [];
 let floatingTexts = [];
 let bgStars = [];
 
+// ========== 白色星星追踪怪 ==========
+let trackers = [];              // 存放所有白色星星追踪怪
+let lastTrackerSpawnTime = 0;   // 上次生成追踪怪的時間
+const TRACKER_SPAWN_INTERVAL = 2000; // 每 2000 毫秒生成一隻追踪怪
+const TRACKER_SPEED = 3.5;      // 追踪怪的移動速度
+const TRACKER_SIZE = 50;        // 追踪怪的大小
+const TRACKER_HP_DAMAGE = 30;   // 追踪怪碰到發射器扣的 HP
+// ===============================
+
 let score = 0;
+let playerHP = 5;
+let maxHP = 5;
 let gameDuration = 60;
 let remainingTime = 60;
 let startTime = 0;
 let lastSpawnTime = 0;
 
-let gameState = "start"; 
+let gameState = "start";
 // start、play、gameover
 
 const colorPalette = [
@@ -105,28 +116,43 @@ function drawStartScreen() {
   textAlign(CENTER, CENTER);
 
   fill(255);
-  textSize(58);
+  textSize(54);
   textStyle(BOLD);
-  text("星星怪物射擊戰", width / 2, height / 2 - 110);
-
-  textSize(22);
-  textStyle(NORMAL);
-  fill(220, 220, 255);
-  text("移動滑鼠瞄準，點擊發射光彈，擊中星星怪物得分！", width / 2, height / 2 - 45);
+  text("星星怪物射擊戰", width / 2, height / 2 - 140);
 
   textSize(18);
-  fill(180, 190, 255);
-  text("60 秒內盡量拿高分，越到後面怪物出現越快", width / 2, height / 2 - 10);
+  textStyle(NORMAL);
+  fill(200, 220, 255);
+  text("【基本操作】滑鼠瞄準並點擊發射飛彈", width / 2, height / 2 - 90);
 
-  drawMainButton(width / 2 - 130, height / 2 + 65, 260, 70, "開始遊戲");
+  textSize(16);
+  fill(180, 200, 255);
+  text("🎯 彩色怪物：10 分", width / 2, height / 2 - 55);
+  text("🪨 灰色隕石：10 分（表面有坑洞和裂痕）", width / 2, height / 2 - 30);
+  text("💧 透明史萊姆：20 分（半透明方塊，後期出現）", width / 2, height / 2 - 5);
 
-  drawCuteMonster(width / 2, height / 2 + 210, 90, "#ff8c42", false);
+  fill(255, 150, 150);
+  textStyle(BOLD);
+  text("⭐ 白色星星追蹤怪：50 分（每 2 秒出現，主動靠近發射器！）", width / 2, height / 2 + 25);
+
+  textSize(14);
+  fill(255, 100, 100);
+  text("⚠️  星星碰到發射器 = 扣 30 HP！注意防守！", width / 2, height / 2 + 55);
+
+  textSize(15);
+  fill(150, 255, 150);
+  text("生存 60 秒 並 守護中央發射器", width / 2, height / 2 + 85);
+
+  drawMainButton(width / 2 - 130, height / 2 + 125, 260, 70, "開始遊戲");
+
+  drawCuteMonster(width / 2, height / 2 + 210, 85, "#ff8c42", false);
 }
+
 
 function runGame() {
   remainingTime = max(0, gameDuration - floor((millis() - startTime) / 1000));
 
-  if (remainingTime <= 0) {
+  if (remainingTime <= 0 || playerHP <= 0) {
     gameState = "gameover";
     return;
   }
@@ -140,6 +166,12 @@ function runGame() {
     lastSpawnTime = millis();
   }
 
+  // ===== 白色星星追蹤怪 每 2 秒生成一隻 =====
+  if (millis() - lastTrackerSpawnTime > TRACKER_SPAWN_INTERVAL) {
+    trackers.push(new Tracker());
+    lastTrackerSpawnTime = millis();
+  }
+
   // 怪物互相碰撞
   for (let i = 0; i < monsters.length; i++) {
     for (let j = i + 1; j < monsters.length; j++) {
@@ -151,6 +183,32 @@ function runGame() {
   for (let i = monsters.length - 1; i >= 0; i--) {
     monsters[i].update();
     monsters[i].display();
+
+    // 检测怪物是否碰到中央发射器
+    let launcherPos = createVector(width / 2, height / 2);
+    let d = dist(monsters[i].x, monsters[i].y, launcherPos.x, launcherPos.y);
+    if (d < monsters[i].size / 2 + 60) {
+      explosions.push(new Explosion(monsters[i].x, monsters[i].y, monsters[i].color));
+      floatingTexts.push(new FloatingText("-1 HP", monsters[i].x, monsters[i].y));
+      playerHP -= 1;
+      monsters.splice(i, 1);
+    }
+  }
+
+  // ===== 白色星星追蹤怪 更新和顯示 =====
+  for (let i = trackers.length - 1; i >= 0; i--) {
+    trackers[i].update();
+    trackers[i].display();
+
+    // ===== 檢測追蹤怪是否碰到中央發射器，如果碰到就扣 30 HP =====
+    let launcherPos = createVector(width / 2, height / 2);
+    let d = dist(trackers[i].x, trackers[i].y, launcherPos.x, launcherPos.y);
+    if (d < trackers[i].size / 2 + 60) {
+      explosions.push(new Explosion(trackers[i].x, trackers[i].y, "#ffffff"));
+      floatingTexts.push(new FloatingText("-1 HP", trackers[i].x, trackers[i].y));
+      playerHP -= 1;
+      trackers.splice(i, 1);
+    }
   }
 
   // 更新飛彈
@@ -178,6 +236,24 @@ function runGame() {
         score += p.scoreValue;
         hit = true;
         break;
+      }
+    }
+
+    // ===== 檢測飛彈是否擊中追蹤怪 =====
+    if (!hit) {
+      for (let j = trackers.length - 1; j >= 0; j--) {
+        let t = trackers[j];
+        let d = dist(m.x, m.y, t.x, t.y);
+
+        if (d < t.size / 2 + m.size / 2) {
+          explosions.push(new Explosion(t.x, t.y, "#ffffff"));
+          floatingTexts.push(new FloatingText("+" + t.scoreValue, t.x, t.y));
+
+          trackers.splice(j, 1);
+          score += t.scoreValue;
+          hit = true;
+          break;
+        }
       }
     }
 
@@ -229,6 +305,43 @@ function drawUI() {
 
   textAlign(RIGHT, CENTER);
   text("怪物數量: " + monsters.length, width - 24, 35);
+
+  pop();
+
+  // 繪製 HP 條
+  push();
+  let hpBarX = 24;
+  let hpBarY = height - 30;
+  let hpBarWidth = 200;
+  let hpBarHeight = 20;
+  let hpBarCorner = 4;
+
+  // 背景
+  fill(50, 50, 50);
+  stroke(150, 150, 150);
+  strokeWeight(2);
+  rect(hpBarX, hpBarY, hpBarWidth, hpBarHeight, hpBarCorner);
+
+  // 血條
+  let hpPercent = playerHP / maxHP;
+  let hpWidth = hpBarWidth * hpPercent;
+
+  if (hpPercent > 0.5) {
+    fill(100, 255, 100);
+  } else if (hpPercent > 0.25) {
+    fill(255, 200, 100);
+  } else {
+    fill(255, 100, 100);
+  }
+  noStroke();
+  rect(hpBarX, hpBarY, hpWidth, hpBarHeight, hpBarCorner);
+
+  // HP 文字
+  fill(255);
+  textSize(14);
+  textStyle(BOLD);
+  textAlign(CENTER, CENTER);
+  text(playerHP + "/" + maxHP, hpBarX + hpBarWidth / 2, hpBarY + hpBarHeight / 2);
 
   pop();
 }
@@ -307,11 +420,19 @@ class Monster {
 
     this.rotation = random(TWO_PI);
     this.rotationSpeed = random(-0.015, 0.015);
+    this.trail = []; // 初始化拖尾陣列
   }
 
   update() {
     this.x += this.vx;
     this.y += this.vy;
+
+    // 如果是史萊姆，紀錄移動路徑
+    if (this.isSlime) {
+      this.trail.push({ x: this.x, y: this.y });
+      if (this.trail.length > 15) this.trail.shift(); // 限制拖尾長度
+    }
+
     this.rotation += this.rotationSpeed;
 
     if (this.x < this.size / 2 || this.x > width - this.size / 2) {
@@ -352,6 +473,22 @@ class Monster {
   display() {
     let d = dist(mouseX, mouseY, this.x, this.y);
     let isHovered = d < this.size / 2;
+
+    // 繪製史萊姆拖尾
+    if (this.isSlime && this.trail.length > 0) {
+      push();
+      noStroke();
+      for (let i = 0; i < this.trail.length; i++) {
+        let p = this.trail[i];
+        let alpha = map(i, 0, this.trail.length, 10, 80); // 越舊的點越透明
+        let s = map(i, 0, this.trail.length, this.size * 0.3, this.size * 0.7); // 越舊的點越小
+        let c = color(this.color);
+        c.setAlpha(alpha);
+        fill(c);
+        ellipse(p.x, p.y, s, s * 0.8);
+      }
+      pop();
+    }
 
     drawCuteMonster(this.x, this.y, this.size, this.color, isHovered, this.rotation, this.isSlime ? "slime" : "meteor");
   }
@@ -459,7 +596,123 @@ function drawCuteMonster(x, y, size, col, isHovered, rot = 0, type = "meteor") {
   pop();
 }
 
-class Missile {
+// ============================================
+// ===== \u767d\u8272\u661f\u661f\u8ffd\u8e2a\u602a\u985e\u5225 =====
+// ============================================
+class Tracker {
+  constructor() {
+    // ===== 先設定大小，才能在下面使用 =====
+    this.size = TRACKER_SIZE;
+    
+    // 白色星星追蹤怪 從畫面邊緣隨機機位產生
+    let side = floor(random(4));
+    
+    if (side === 0) {
+      // 上方
+      this.x = random(50, width - 50);
+      this.y = -this.size;
+    } else if (side === 1) {
+      // 下方
+      this.x = random(50, width - 50);
+      this.y = height + this.size;
+    } else if (side === 2) {
+      // 左方
+      this.x = -this.size;
+      this.y = random(50, height - 50);
+    } else {
+      // 右方
+      this.x = width + this.size;
+      this.y = random(50, height - 50);
+    }
+    
+    this.rotation = 0;
+    this.rotationSpeed = 0.08;
+    this.scoreValue = 50; // 追蹤怪打中時加上 50 分
+  }
+  
+  // ===== 每一幀更新追蹤怪的位置 =====
+  update() {
+    // 追蹤怪會持續朝向畫面中心（width/2, height/2）移動
+    let centerX = width / 2;
+    let centerY = height / 2;
+    
+    // 計算追蹤怪到中心的方向
+    let dx = centerX - this.x;
+    let dy = centerY - this.y;
+    let distance = sqrt(dx * dx + dy * dy);
+    
+    // 正規化方向向量
+    if (distance > 0) {
+      let dirX = dx / distance;
+      let dirY = dy / distance;
+      
+      // 按照 TRACKER_SPEED 速度移動
+      this.x += dirX * TRACKER_SPEED;
+      this.y += dirY * TRACKER_SPEED;
+    }
+    
+    // 旋轉動畫
+    this.rotation += this.rotationSpeed;
+  }
+  
+  display() {
+    // 使用特殊的追蹤怪渲染函數
+    drawWhiteStarTracker(this.x, this.y, this.size, this.rotation);
+  }
+}
+
+// ===== \u7e8c\u7a47\u8ffd\u8e2a\u602a\u7684\u661f\u661f\u6e32\u67d3 =====
+function drawWhiteStarTracker(x, y, size, rotation) {
+  push();
+  translate(x, y);
+  rotate(rotation);
+  
+  // \u767d\u8272\u661f\u661f\u5916\u5340\u7684\u7f85\u65c5\u6548\u61c9
+  drawingContext.shadowBlur = 20;
+  drawingContext.shadowColor = "rgba(255, 255, 255, 0.8)";
+  
+  // \u7e8c\u7a47\u661f\u661f\uff1a\u7531 5 \u500b\u5916\u6a5f\u9ede\u548c 5 \u500b\u5167\u51f9\u65a9\u75cb
+  let outerRadius = size * 0.48;
+  let innerRadius = size * 0.2;
+  
+  noStroke();
+  fill(255, 255, 255); // \u7d14\u767d\u8272
+  
+  beginShape();
+  for (let i = 0; i < 10; i++) {
+    let angle = (TWO_PI / 10) * i - PI / 2;
+    let radius = (i % 2 === 0) ? outerRadius : innerRadius;
+    let vx = cos(angle) * radius;
+    let vy = sin(angle) * radius;
+    vertex(vx, vy);
+  }
+  endShape(CLOSE);
+  
+  // 追蹤怪的粗反光角 (淡藍色的光澤效果)
+  fill(200, 200, 255, 60);
+  ellipse(-size * 0.15, -size * 0.15, size * 0.4, size * 0.3);
+  
+  // 追蹤怪的知覺物（一個大眼睛和一個小眼睛）
+  // 大眼睛
+  fill(50, 50, 100);
+  circle(-size * 0.2, -size * 0.15, size * 0.18);
+  circle(size * 0.15, -size * 0.18, size * 0.15);
+  
+  // 眼珠亮點
+  fill(255, 255, 255, 200);
+  circle(-size * 0.2 + size * 0.05, -size * 0.15 + size * 0.04, size * 0.06);
+  circle(size * 0.15 + size * 0.04, -size * 0.18 + size * 0.05, size * 0.05);
+  
+  // 快樂的嘴
+  stroke(255, 100, 150);
+  strokeWeight(2);
+  noFill();
+  arc(0, size * 0.1, size * 0.3, size * 0.2, 0.2, PI - 0.2);
+  
+  // 移除發光效果
+  drawingContext.shadowBlur = 0;
+  
+  pop();\n}\n\nclass Missile {
   constructor(x, y, vx, vy) {
     this.x = x;
     this.y = y;
@@ -607,7 +860,7 @@ class FloatingText {
 function mousePressed() {
   if (gameState === "start") {
     if (mouseX > width / 2 - 130 && mouseX < width / 2 + 130 &&
-        mouseY > height / 2 + 65 && mouseY < height / 2 + 135) {
+        mouseY > height / 2 + 125 && mouseY < height / 2 + 195) {
       startGame();
     }
     return;
@@ -640,14 +893,17 @@ function touchStarted() {
 
 function startGame() {
   score = 0;
+  playerHP = maxHP;
   remainingTime = gameDuration;
   monsters = [];
   missiles = [];
   explosions = [];
   floatingTexts = [];
+  trackers = [];                    // ===== 重置白色星星追踪怪陣列 =====
 
   startTime = millis();
   lastSpawnTime = millis();
+  lastTrackerSpawnTime = millis();  // ===== 重置追踪怪的生成計時器 =====
 
   for (let i = 0; i < 8; i++) {
     monsters.push(new Monster());
