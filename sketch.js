@@ -1,0 +1,663 @@
+let monsters = [];
+let missiles = [];
+let explosions = [];
+let floatingTexts = [];
+let bgStars = [];
+
+let score = 0;
+let gameDuration = 60;
+let remainingTime = 60;
+let startTime = 0;
+let lastSpawnTime = 0;
+
+let gameState = "start"; 
+// start、play、gameover
+
+const colorPalette = [
+  "#ff4d6d",
+  "#ff8c42",
+  "#ffd166",
+  "#90be6d",
+  "#43aa8b",
+  "#4d96ff",
+  "#9b5de5",
+  "#f15bb5"
+];
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  angleMode(RADIANS);
+  textFont("Microsoft JhengHei");
+
+  createBackgroundStars();
+}
+
+function draw() {
+  drawSpaceBackground();
+
+  if (gameState === "start") {
+    drawStartScreen();
+  } else if (gameState === "play") {
+    runGame();
+  } else if (gameState === "gameover") {
+    drawGameOverScreen();
+  }
+}
+
+function createBackgroundStars() {
+  bgStars = [];
+  for (let i = 0; i < 140; i++) {
+    bgStars.push({
+      x: random(width),
+      y: random(height),
+      size: random(1, 3),
+      speed: random(0.15, 0.8),
+      alpha: random(90, 220)
+    });
+  }
+}
+
+function drawSpaceBackground() {
+  background(5, 8, 22);
+
+  noStroke();
+
+  // 深色漸層光暈
+  for (let r = 700; r > 0; r -= 40) {
+    fill(70, 40, 140, map(r, 700, 0, 0, 35));
+    ellipse(width / 2, height / 2, r * 1.8, r);
+  }
+
+  // 星星背景
+  for (let s of bgStars) {
+    fill(255, 255, 255, s.alpha);
+    circle(s.x, s.y, s.size);
+
+    s.y += s.speed;
+    if (s.y > height) {
+      s.y = 0;
+      s.x = random(width);
+    }
+  }
+
+  // 背景斜線
+  stroke(120, 90, 255, 25);
+  strokeWeight(1);
+  for (let i = -width; i < width * 2; i += 120) {
+    line(i, 0, i + width * 0.35, height);
+  }
+}
+
+function drawStartScreen() {
+  textAlign(CENTER, CENTER);
+
+  fill(255);
+  textSize(58);
+  textStyle(BOLD);
+  text("星星怪物射擊戰", width / 2, height / 2 - 110);
+
+  textSize(22);
+  textStyle(NORMAL);
+  fill(220, 220, 255);
+  text("移動滑鼠瞄準，點擊發射光彈，擊中星星怪物得分！", width / 2, height / 2 - 45);
+
+  textSize(18);
+  fill(180, 190, 255);
+  text("60 秒內盡量拿高分，越到後面怪物出現越快", width / 2, height / 2 - 10);
+
+  drawMainButton(width / 2 - 130, height / 2 + 65, 260, 70, "開始遊戲");
+
+  drawCuteMonster(width / 2, height / 2 + 210, 90, "#ff8c42", false);
+}
+
+function runGame() {
+  remainingTime = max(0, gameDuration - floor((millis() - startTime) / 1000));
+
+  if (remainingTime <= 0) {
+    gameState = "gameover";
+    return;
+  }
+
+  drawUI();
+
+  let spawnInterval = map(remainingTime, gameDuration, 0, 2400, 450);
+
+  if (millis() - lastSpawnTime > spawnInterval) {
+    monsters.push(new Monster());
+    lastSpawnTime = millis();
+  }
+
+  // 怪物互相碰撞
+  for (let i = 0; i < monsters.length; i++) {
+    for (let j = i + 1; j < monsters.length; j++) {
+      monsters[i].collide(monsters[j]);
+    }
+  }
+
+  // 更新怪物
+  for (let i = monsters.length - 1; i >= 0; i--) {
+    monsters[i].update();
+    monsters[i].display();
+  }
+
+  // 更新飛彈
+  for (let i = missiles.length - 1; i >= 0; i--) {
+    let m = missiles[i];
+    m.update();
+    m.display();
+
+    if (m.isOffScreen()) {
+      missiles.splice(i, 1);
+      continue;
+    }
+
+    let hit = false;
+
+    for (let j = monsters.length - 1; j >= 0; j--) {
+      let p = monsters[j];
+      let d = dist(m.x, m.y, p.x, p.y);
+
+      if (d < p.size / 2 + m.size / 2) {
+        explosions.push(new Explosion(p.x, p.y, p.color));
+        floatingTexts.push(new FloatingText("+10", p.x, p.y));
+
+        monsters.splice(j, 1);
+        score += 10;
+        hit = true;
+        break;
+      }
+    }
+
+    if (hit) {
+      missiles.splice(i, 1);
+    }
+  }
+
+  // 爆炸
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    explosions[i].update();
+    explosions[i].display();
+
+    if (explosions[i].isDone()) {
+      explosions.splice(i, 1);
+    }
+  }
+
+  // 分數跳字
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    floatingTexts[i].update();
+    floatingTexts[i].display();
+
+    if (floatingTexts[i].isDone()) {
+      floatingTexts.splice(i, 1);
+    }
+  }
+
+  drawLauncher();
+  drawAimArrow();
+}
+
+function drawUI() {
+  push();
+
+  noStroke();
+  fill(0, 0, 0, 90);
+  rect(0, 0, width, 70);
+
+  fill(255);
+  textSize(24);
+  textStyle(BOLD);
+
+  textAlign(LEFT, CENTER);
+  text("Score: " + score, 24, 35);
+
+  textAlign(CENTER, CENTER);
+  text("剩餘時間: " + remainingTime + " s", width / 2, 35);
+
+  textAlign(RIGHT, CENTER);
+  text("怪物數量: " + monsters.length, width - 24, 35);
+
+  pop();
+}
+
+function drawLauncher() {
+  push();
+  translate(width / 2, height / 2);
+
+  noStroke();
+
+  fill(120, 70, 255, 45);
+  circle(0, 0, 120);
+
+  fill(160, 120, 255, 80);
+  circle(0, 0, 78);
+
+  fill(255);
+  circle(0, 0, 20);
+
+  fill(160, 220, 255);
+  circle(0, 0, 10);
+
+  pop();
+}
+
+function drawAimArrow() {
+  push();
+
+  translate(width / 2, height / 2);
+
+  let angle = atan2(mouseY - height / 2, mouseX - width / 2);
+  rotate(angle);
+
+  strokeCap(ROUND);
+  strokeJoin(ROUND);
+
+  drawingContext.shadowBlur = 28;
+  drawingContext.shadowColor = "#9b5de5";
+
+  stroke(130, 70, 255, 150);
+  strokeWeight(15);
+  line(0, 0, 75, 0);
+  line(75, 0, 52, -22);
+  line(75, 0, 52, 22);
+
+  drawingContext.shadowBlur = 0;
+
+  stroke(255, 255, 255, 210);
+  strokeWeight(4);
+  line(0, 0, 75, 0);
+  line(75, 0, 52, -22);
+  line(75, 0, 52, 22);
+
+  pop();
+}
+
+class Monster {
+  constructor() {
+    let minSize = map(remainingTime, gameDuration, 0, 95, 45);
+    let maxSize = map(remainingTime, gameDuration, 0, 150, 70);
+
+    this.size = random(minSize, maxSize);
+
+    this.x = random(this.size, width - this.size);
+    this.y = random(90 + this.size, height - this.size);
+
+    this.color = random(colorPalette);
+
+    let speed = random(1.3, 3.8);
+    let angle = random(TWO_PI);
+
+    this.vx = cos(angle) * speed;
+    this.vy = sin(angle) * speed;
+
+    this.rotation = random(TWO_PI);
+    this.rotationSpeed = random(-0.015, 0.015);
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.rotation += this.rotationSpeed;
+
+    if (this.x < this.size / 2 || this.x > width - this.size / 2) {
+      this.vx *= -1;
+    }
+
+    if (this.y < 90 + this.size / 2 || this.y > height - this.size / 2) {
+      this.vy *= -1;
+    }
+  }
+
+  collide(other) {
+    let dx = other.x - this.x;
+    let dy = other.y - this.y;
+    let distance = dist(this.x, this.y, other.x, other.y);
+    let minDist = this.size / 2 + other.size / 2;
+
+    if (distance < minDist && distance > 0) {
+      let overlap = minDist - distance;
+      let nx = dx / distance;
+      let ny = dy / distance;
+
+      this.x -= nx * overlap / 2;
+      this.y -= ny * overlap / 2;
+      other.x += nx * overlap / 2;
+      other.y += ny * overlap / 2;
+
+      let tempVx = this.vx;
+      let tempVy = this.vy;
+
+      this.vx = other.vx;
+      this.vy = other.vy;
+      other.vx = tempVx;
+      other.vy = tempVy;
+    }
+  }
+
+  display() {
+    let d = dist(mouseX, mouseY, this.x, this.y);
+    let isHovered = d < this.size / 2;
+
+    drawCuteMonster(this.x, this.y, this.size, this.color, isHovered, this.rotation);
+  }
+}
+
+function drawCuteMonster(x, y, size, col, isHovered, rot = 0) {
+  push();
+  translate(x, y);
+  rotate(rot);
+
+  drawingContext.shadowBlur = 16;
+  drawingContext.shadowColor = col;
+
+  noStroke();
+  fill(col);
+
+  if (isHovered) {
+    circle(0, 0, size);
+  } else {
+    beginShape();
+    for (let a = 0; a < TWO_PI; a += 0.08) {
+      let wave = sin(a * 8) * size * 0.09;
+      let r = size / 2 + wave;
+      vertex(cos(a) * r, sin(a) * r);
+    }
+    endShape(CLOSE);
+  }
+
+  drawingContext.shadowBlur = 0;
+
+  // 眼睛
+  let eyeOffsetX = size * 0.17;
+  let eyeOffsetY = -size * 0.13;
+  let eyeSize = size * 0.24;
+  let pupilSize = eyeSize * 0.43;
+  let maxPupilMove = (eyeSize - pupilSize) / 2;
+
+  fill(255);
+  circle(-eyeOffsetX, eyeOffsetY, eyeSize);
+  circle(eyeOffsetX, eyeOffsetY, eyeSize);
+
+  let angleLeft = atan2(mouseY - (y + eyeOffsetY), mouseX - (x - eyeOffsetX));
+  let angleRight = atan2(mouseY - (y + eyeOffsetY), mouseX - (x + eyeOffsetX));
+
+  fill(0);
+  circle(
+    -eyeOffsetX + cos(angleLeft) * maxPupilMove,
+    eyeOffsetY + sin(angleLeft) * maxPupilMove,
+    pupilSize
+  );
+
+  circle(
+    eyeOffsetX + cos(angleRight) * maxPupilMove,
+    eyeOffsetY + sin(angleRight) * maxPupilMove,
+    pupilSize
+  );
+
+  // 嘴巴
+  stroke(0);
+  strokeWeight(size * 0.035);
+  noFill();
+
+  if (isHovered) {
+    fill(0);
+    noStroke();
+    ellipse(0, size * 0.13, size * 0.23, size * 0.32);
+  } else {
+    noFill();
+    arc(0, size * 0.05, size * 0.42, size * 0.3, 0, PI);
+  }
+
+  pop();
+}
+
+class Missile {
+  constructor(x, y, vx, vy) {
+    this.x = x;
+    this.y = y;
+    this.vx = vx;
+    this.vy = vy;
+    this.size = 12;
+    this.trail = [];
+  }
+
+  update() {
+    this.trail.push({ x: this.x, y: this.y });
+
+    if (this.trail.length > 8) {
+      this.trail.shift();
+    }
+
+    this.x += this.vx;
+    this.y += this.vy;
+  }
+
+  display() {
+    push();
+
+    noStroke();
+
+    for (let i = 0; i < this.trail.length; i++) {
+      let t = this.trail[i];
+      let alpha = map(i, 0, this.trail.length - 1, 40, 180);
+      fill(255, 220, 80, alpha);
+      circle(t.x, t.y, map(i, 0, this.trail.length - 1, 4, 10));
+    }
+
+    drawingContext.shadowBlur = 18;
+    drawingContext.shadowColor = "#ffd166";
+
+    fill(255, 230, 80);
+    circle(this.x, this.y, this.size);
+
+    fill(255);
+    circle(this.x - 2, this.y - 2, this.size * 0.35);
+
+    drawingContext.shadowBlur = 0;
+
+    pop();
+  }
+
+  isOffScreen() {
+    return this.x < -50 || this.x > width + 50 || this.y < -50 || this.y > height + 50;
+  }
+}
+
+class Explosion {
+  constructor(x, y, col) {
+    this.x = x;
+    this.y = y;
+    this.color = col;
+    this.radius = 10;
+    this.alpha = 255;
+    this.pieces = [];
+
+    for (let i = 0; i < 22; i++) {
+      let angle = random(TWO_PI);
+      let speed = random(2, 8);
+
+      this.pieces.push({
+        x: x,
+        y: y,
+        vx: cos(angle) * speed,
+        vy: sin(angle) * speed,
+        size: random(4, 10),
+        alpha: 255
+      });
+    }
+  }
+
+  update() {
+    this.radius += 10;
+    this.alpha -= 18;
+
+    for (let p of this.pieces) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.94;
+      p.vy *= 0.94;
+      p.alpha -= 12;
+    }
+  }
+
+  display() {
+    push();
+
+    let c = color(this.color);
+    c.setAlpha(this.alpha);
+
+    noFill();
+    stroke(c);
+    strokeWeight(5);
+    circle(this.x, this.y, this.radius);
+
+    noStroke();
+
+    for (let p of this.pieces) {
+      let pc = color(this.color);
+      pc.setAlpha(p.alpha);
+      fill(pc);
+      circle(p.x, p.y, p.size);
+    }
+
+    pop();
+  }
+
+  isDone() {
+    return this.alpha <= 0;
+  }
+}
+
+class FloatingText {
+  constructor(txt, x, y) {
+    this.txt = txt;
+    this.x = x;
+    this.y = y;
+    this.alpha = 255;
+  }
+
+  update() {
+    this.y -= 1.8;
+    this.alpha -= 6;
+  }
+
+  display() {
+    push();
+    textAlign(CENTER, CENTER);
+    textSize(28);
+    textStyle(BOLD);
+    fill(255, 230, 90, this.alpha);
+    text(this.txt, this.x, this.y);
+    pop();
+  }
+
+  isDone() {
+    return this.alpha <= 0;
+  }
+}
+
+function mousePressed() {
+  if (gameState === "start") {
+    if (mouseX > width / 2 - 130 && mouseX < width / 2 + 130 &&
+        mouseY > height / 2 + 65 && mouseY < height / 2 + 135) {
+      startGame();
+    }
+    return;
+  }
+
+  if (gameState === "gameover") {
+    startGame();
+    return;
+  }
+
+  if (gameState === "play") {
+    let angle = atan2(mouseY - height / 2, mouseX - width / 2);
+    let speed = 16;
+
+    missiles.push(
+      new Missile(
+        width / 2,
+        height / 2,
+        cos(angle) * speed,
+        sin(angle) * speed
+      )
+    );
+  }
+}
+
+function touchStarted() {
+  mousePressed();
+  return false;
+}
+
+function startGame() {
+  score = 0;
+  remainingTime = gameDuration;
+  monsters = [];
+  missiles = [];
+  explosions = [];
+  floatingTexts = [];
+
+  startTime = millis();
+  lastSpawnTime = millis();
+
+  for (let i = 0; i < 8; i++) {
+    monsters.push(new Monster());
+  }
+
+  gameState = "play";
+}
+
+function drawGameOverScreen() {
+  textAlign(CENTER, CENTER);
+
+  fill(255);
+  textSize(64);
+  textStyle(BOLD);
+  text("遊戲結束", width / 2, height / 2 - 95);
+
+  textSize(34);
+  fill(255, 230, 90);
+  text("最終分數：" + score, width / 2, height / 2 - 25);
+
+  textSize(20);
+  fill(220, 220, 255);
+  text("點擊畫面可以重新開始", width / 2, height / 2 + 25);
+
+  drawMainButton(width / 2 - 130, height / 2 + 80, 260, 70, "再玩一次");
+}
+
+function drawMainButton(x, y, w, h, label) {
+  let hover = mouseX > x && mouseX < x + w && mouseY > y && mouseY < y + h;
+
+  push();
+
+  drawingContext.shadowBlur = hover ? 25 : 12;
+  drawingContext.shadowColor = "#9b5de5";
+
+  if (hover) {
+    fill(150, 95, 255);
+  } else {
+    fill(95, 65, 220);
+  }
+
+  stroke(255, 255, 255, 180);
+  strokeWeight(2);
+  rect(x, y, w, h, 24);
+
+  drawingContext.shadowBlur = 0;
+
+  noStroke();
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(26);
+  textStyle(BOLD);
+  text(label, x + w / 2, y + h / 2);
+
+  pop();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  createBackgroundStars();
+}

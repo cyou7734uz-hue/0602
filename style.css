@@ -1,0 +1,11 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #050816;
+  font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+}
+
+canvas {
+  display: block;
+}
